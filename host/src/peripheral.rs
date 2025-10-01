@@ -1,4 +1,5 @@
 //! Functionality for the BLE peripheral role.
+use crate::traceuart::writeln;
 use core::task::Poll;
 
 use bt_hci::cmd::le::{
@@ -37,18 +38,20 @@ impl<'d, C: Controller, P: PacketPool> Peripheral<'d, C, P> {
             + for<'t> ControllerCmdSync<LeSetScanResponseData>,
     {
         let host = &self.stack.host;
-
+        writeln!("inside advertise command");
         // Ensure no other advertise ongoing.
         let drop = crate::host::OnDrop::new(|| {
             host.advertise_command_state.cancel(false);
         });
         host.advertise_command_state.request().await;
-
+        writeln!("host.advertise_command_state.request() done");
         // Clear current advertising terminations
         host.advertise_state.reset();
 
         let data: RawAdvertisement = data.into();
+        writeln!("{:?}", data);
         if !data.props.legacy_adv() {
+            writeln!("Error::ExtendedAdvertisingNotSupported");
             return Err(Error::ExtendedAdvertisingNotSupported.into());
         }
 
@@ -62,7 +65,7 @@ impl<'d, C: Controller, P: PacketPool> Peripheral<'d, C, P> {
             kind: AddrKind::PUBLIC,
             addr: BdAddr::default(),
         });
-
+        writeln!("{:#?}", peer);
         host.command(LeSetAdvParams::new(
             bt_hci_duration(params.interval_min),
             bt_hci_duration(params.interval_max),
@@ -74,19 +77,23 @@ impl<'d, C: Controller, P: PacketPool> Peripheral<'d, C, P> {
             params.filter_policy,
         ))
         .await?;
-
+        writeln!("LeSetAdvParams done");
         if !data.adv_data.is_empty() {
+            writeln!("LeSetAdvData");
             let mut buf = [0; 31];
             let to_copy = data.adv_data.len().min(buf.len());
             buf[..to_copy].copy_from_slice(&data.adv_data[..to_copy]);
             host.command(LeSetAdvData::new(to_copy as u8, buf)).await?;
+            writeln!("LeSetAdvData done");
         }
 
         if !data.scan_data.is_empty() {
+            writeln!("LeSetScanResponseData");
             let mut buf = [0; 31];
             let to_copy = data.scan_data.len().min(buf.len());
             buf[..to_copy].copy_from_slice(&data.scan_data[..to_copy]);
             host.command(LeSetScanResponseData::new(to_copy as u8, buf)).await?;
+            writeln!("LeSetScanResponseData done");
         }
 
         let advset: [AdvSet; 1] = [AdvSet {
@@ -95,9 +102,10 @@ impl<'d, C: Controller, P: PacketPool> Peripheral<'d, C, P> {
             max_ext_adv_events: 0,
         }];
 
-        trace!("[host] enabling advertising");
+        writeln!("[host] enabling advertising");
         host.advertise_state.start(&advset[..]);
         host.command(LeSetAdvEnable::new(true)).await?;
+        writeln!("LeSetAdvEnable done");
         drop.defuse();
         Ok(Advertiser {
             stack: self.stack,

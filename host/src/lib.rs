@@ -32,6 +32,9 @@ mod fmt;
 #[cfg(not(any(feature = "central", feature = "peripheral")))]
 compile_error!("Must enable at least one of the `central` or `peripheral` features");
 
+pub mod traceuart;
+use crate::traceuart::writeln;
+
 pub mod att;
 #[cfg(feature = "central")]
 pub mod central;

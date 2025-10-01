@@ -1,6 +1,7 @@
 //! BleHost
 //!
 //! The host module contains the main entry point for the TrouBLE host.
+use crate::traceuart::writeln;
 use core::cell::RefCell;
 use core::future::poll_fn;
 use core::mem::MaybeUninit;
@@ -765,15 +766,18 @@ impl<'d, C: Controller, P: PacketPool> Runner<'d, C, P> {
         pin_mut!(control_fut, rx_fut, tx_fut);
         match select3(&mut tx_fut, &mut rx_fut, &mut control_fut).await {
             Either3::First(result) => {
-                trace!("[host] tx_fut exit");
+                writeln!("[host] tx_fut exit");
                 result
             }
             Either3::Second(result) => {
-                trace!("[host] rx_fut exit");
+                writeln!("[host] rx_fut exit");
                 result
             }
             Either3::Third(result) => {
-                trace!("[host] control_fut exit");
+                if result.is_err() {
+                    writeln!("Error");
+                }
+                writeln!("[host] control_fut exit");
                 result
             }
         }
@@ -1061,7 +1065,6 @@ impl<'d, C: Controller, P: PacketPool> ControlRunner<'d, C, P> {
         if let Some(addr) = host.address {
             LeSetRandomAddr::new(addr.addr).exec(&host.controller).await?;
         }
-
         SetEventMask::new(
             EventMask::new()
                 .enable_le_meta(true)
@@ -1074,9 +1077,9 @@ impl<'d, C: Controller, P: PacketPool> ControlRunner<'d, C, P> {
         .exec(&host.controller)
         .await?;
 
-        SetEventMaskPage2::new(EventMaskPage2::new().enable_encryption_change_v2(true))
-            .exec(&host.controller)
-            .await?;
+        // SetEventMaskPage2::new(EventMaskPage2::new().enable_encryption_change_v2(true))
+        //     .exec(&host.controller)
+        //     .await?;
 
         LeSetEventMask::new(
             LeEventMask::new()
@@ -1095,28 +1098,30 @@ impl<'d, C: Controller, P: PacketPool> ControlRunner<'d, C, P> {
         .exec(&host.controller)
         .await?;
 
-        info!(
+        writeln!(
             "[host] using packet pool with MTU {} capacity {}",
             P::MTU,
             P::capacity(),
         );
 
         let ret = LeReadFilterAcceptListSize::new().exec(&host.controller).await?;
-        info!("[host] filter accept list size: {}", ret);
+        writeln!("[host] filter accept list size: {}", ret);
 
         let ret = LeReadBufferSize::new().exec(&host.controller).await?;
-        info!(
+        writeln!(
             "[host] setting txq to {}, fragmenting at {}",
-            ret.total_num_le_acl_data_packets as usize, ret.le_acl_data_packet_length as usize
+            ret.total_num_le_acl_data_packets as usize,
+            ret.le_acl_data_packet_length as usize
         );
         host.connections
             .set_link_credits(ret.total_num_le_acl_data_packets as usize);
 
         const ACL_LEN: u16 = 255;
         const ACL_N: u16 = 1;
-        info!(
+        writeln!(
             "[host] configuring host buffers ({} packets of size {})",
-            ACL_N, ACL_LEN,
+            ACL_N,
+            ACL_LEN,
         );
         HostBufferSize::new(ACL_LEN, 0, ACL_N, 0).exec(&host.controller).await?;
 
@@ -1133,7 +1138,7 @@ impl<'d, C: Controller, P: PacketPool> ControlRunner<'d, C, P> {
         let _ = host.initialized.init(InitialState {
             acl_max: ret.le_acl_data_packet_length as usize,
         });
-        info!("[host] initialized");
+        writeln!("[host] initialized");
 
         let device_address = host.command(ReadBdAddr::new()).await?;
         if *device_address.raw() != [0, 0, 0, 0, 0, 0] {
@@ -1141,7 +1146,7 @@ impl<'d, C: Controller, P: PacketPool> ControlRunner<'d, C, P> {
                 kind: AddrKind::PUBLIC,
                 addr: device_address,
             };
-            info!("[host] Device Address {}", device_address);
+            writeln!("[host] Device Address {}", device_address);
             if host.address.is_none() {
                 #[cfg(feature = "security")]
                 host.connections.security_manager.set_local_address(device_address);
@@ -1169,7 +1174,7 @@ impl<'d, C: Controller, P: PacketPool> ControlRunner<'d, C, P> {
             .await
             {
                 Either3::First(request) => {
-                    trace!("[host] poll disconnecting links");
+                    writeln!("[host] poll disconnecting links");
                     match host.command(Disconnect::new(request.handle(), request.reason())).await {
                         Ok(_) => {}
                         Err(BleHostError::BleHost(Error::Hci(bt_hci::param::Error::UNKNOWN_CONN_IDENTIFIER))) => {}
@@ -1180,7 +1185,7 @@ impl<'d, C: Controller, P: PacketPool> ControlRunner<'d, C, P> {
                     request.confirm();
                 }
                 Either3::Second(request) => {
-                    trace!("[host] poll disconnecting channels");
+                    writeln!("[host] poll disconnecting channels");
                     match request.send(host).await {
                         Ok(_) => {}
                         Err(BleHostError::BleHost(Error::Hci(bt_hci::param::Error::UNKNOWN_CONN_IDENTIFIER))) => {}
@@ -1193,16 +1198,16 @@ impl<'d, C: Controller, P: PacketPool> ControlRunner<'d, C, P> {
                 }
                 Either3::Third(states) => match states {
                     Either4::First(_) => {
-                        trace!("[host] cancel connection create");
+                        writeln!("[host] cancel connection create");
                         // trace!("[host] cancelling create connection");
                         if host.command(LeCreateConnCancel::new()).await.is_err() {
-                            warn!("[host] error cancelling connection");
+                            writeln!("[host] error cancelling connection");
                         }
                         // Signal to ensure no one is stuck
                         host.connect_command_state.canceled();
                     }
                     Either4::Second(ext) => {
-                        trace!("[host] disabling advertising");
+                        writeln!("[host] disabling advertising");
                         if ext {
                             host.command(LeSetExtAdvEnable::new(false, &[])).await?
                         } else {
@@ -1211,7 +1216,7 @@ impl<'d, C: Controller, P: PacketPool> ControlRunner<'d, C, P> {
                         host.advertise_command_state.canceled();
                     }
                     Either4::Third(ext) => {
-                        trace!("[host] disabling scanning");
+                        writeln!("[host] disabling scanning");
                         if ext {
                             // TODO: A bit opinionated but not more than before
                             host.command(LeSetExtScanEnable::new(
