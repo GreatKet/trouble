@@ -17,7 +17,7 @@ use crate::{bt_hci_duration, bt_hci_ext_duration, Address, BleHostError, Error, 
 
 /// Type which implements the BLE peripheral role.
 pub struct Peripheral<'d, C, P: PacketPool> {
-    stack: &'d Stack<'d, C, P>,
+    pub stack: &'d Stack<'d, C, P>,
 }
 
 impl<'d, C: Controller, P: PacketPool> Peripheral<'d, C, P> {
