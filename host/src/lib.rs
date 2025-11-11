@@ -586,7 +586,7 @@ pub fn new<
 
 /// Contains the host stack
 pub struct Stack<'stack, C, P: PacketPool> {
-    host: BleHost<'stack, C, P>,
+    pub host: BleHost<'stack, C, P>,
 }
 
 /// Host components.

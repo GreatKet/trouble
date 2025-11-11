@@ -65,11 +65,11 @@ use crate::{att, Address, BleHostError, Error, PacketPool, Stack};
 ///
 /// The host performs connection management, l2cap channel management, and
 /// multiplexes events and data across connections and l2cap channels.
-pub(crate) struct BleHost<'d, T, P: PacketPool> {
+pub struct BleHost<'d, T, P: PacketPool> {
     initialized: OnceLock<InitialState>,
     metrics: RefCell<HostMetrics>,
     pub(crate) address: Option<Address>,
-    pub(crate) controller: T,
+    pub controller: T,
     pub(crate) connections: ConnectionManager<'d, P>,
     pub(crate) channels: ChannelManager<'d, P>,
     #[cfg(feature = "gatt")]
@@ -660,7 +660,7 @@ where
 /// Runs the host with the given controller.
 pub struct Runner<'d, C, P: PacketPool> {
     rx: RxRunner<'d, C, P>,
-    control: ControlRunner<'d, C, P>,
+    pub control: ControlRunner<'d, C, P>,
     tx: TxRunner<'d, C, P>,
 }
 
@@ -671,7 +671,7 @@ pub struct RxRunner<'d, C, P: PacketPool> {
 
 /// The control part of the host runner.
 pub struct ControlRunner<'d, C, P: PacketPool> {
-    stack: &'d Stack<'d, C, P>,
+    pub stack: &'d Stack<'d, C, P>,
 }
 
 /// The transmit part of the host runner.
